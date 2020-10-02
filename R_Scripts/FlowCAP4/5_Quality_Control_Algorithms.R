@@ -40,36 +40,37 @@ for (file in files[1:55]){
 
     # flowclean analyse
 
-    out <- tryCatch({flowclean_res <- flowClean::clean(ff, channels,
-                                      filePrefixWithDir = paste0("FlowCAP4/flowClean/",
-                                                                 sub(".fcs", "",file)),
-                                      ext = "fcs", diagnostic = TRUE)
-
-    write.FCS(flowclean_res, paste0("FlowCAP4/flowClean/", file))}
-    )
-
-    # flowCut analyse
-
-    flowcut_res <- flowCut(ff, Channels = channels, Directory = "FlowCAP4/flowCut",Plot = "All")
-
-    saveRDS(flowcut_res, file = paste0("FlowCAP4/flowCut/",
-                                           sub(".fcs", ".Rds", file)))
-
-    write.FCS(flowcut_res$frame,
-              filename = paste0("FlowCAP4/flowCut/", basename(file)))
-
-
-    # FlowAI one step
-
-    # Make sure that filename is stored correctly
-    
-    ff@description$`$FIL` <- file
-
-    flowai_full <- flow_auto_qc(ff,
-                                ChExcludeFM = colnames(ff)[-channels],
-                                ChExcludeFS = colnames(ff)[-channels],
-                                folder_results = "FlowCAP4/FlowAI_full",
-                                output = 2)
+    # out <- tryCatch({flowclean_res <- flowClean::clean(ff, channels,
+    #                                   filePrefixWithDir = paste0("FlowCAP4/flowClean/",
+    #                                                              sub(".fcs", "",file)),
+    #                                   ext = "fcs", diagnostic = TRUE)
+    # 
+    # write.FCS(flowclean_res, paste0("FlowCAP4/flowClean/", file))}
+    # )
+    # 
+    # # flowCut analyse
+    # 
+    # flowcut_res <- flowCut(ff, Channels = channels, 
+    #                        Directory = "FlowCAP4/flowCut",Plot = "All")
+    # 
+    # saveRDS(flowcut_res, file = paste0("FlowCAP4/flowCut/",
+    #                                        sub(".fcs", ".Rds", file)))
+    # 
+    # write.FCS(flowcut_res$frame,
+    #           filename = paste0("FlowCAP4/flowCut/", basename(file)))
+    # 
+    # 
+    # # FlowAI one step
+    # 
+    # # Make sure that filename is stored correctly
+    # 
+    # ff@description$`$FIL` <- file
+    # 
+    # flowai_full <- flow_auto_qc(ff,
+    #                             ChExcludeFM = colnames(ff)[-channels],
+    #                             ChExcludeFS = colnames(ff)[-channels],
+    #                             folder_results = "FlowCAP4/FlowAI_full",
+    #                             output = 2)
     
 
     

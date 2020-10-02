@@ -1,0 +1,217 @@
+---
+title: "Spectral_data_example"
+output: html_document
+---
+
+
+# Load helper functions and libraries
+```{r}
+source("../QC_Comparison_helper_function.R")
+
+library(PeacoQC)
+library(flowAI)
+library(flowCut)
+library(flowClean)
+library(flowCore)
+library(reshape2)
+library(ggplot2)
+library(ggpubr)
+
+```
+
+
+# Run Quality control algorithms on mass data file
+
+```{r}
+
+# Path to compensation matrix
+compensation_matrix <- read.csv("../../Data_flowRepository/compensation_matrix_spectral_data.csv",
+                                row.names = 1,
+                                check.names = FALSE)
+
+# Path to spectral file
+file <- "../../Data_flowRepository/Spectral_file.fcs"
+
+dir.create("Spectral_data")
+
+# Path to mass cytometry file
+ff <- read.FCS(file, truncate_max_range = FALSE)
+
+ff <- compensate(ff, compensation_matrix)
+
+ff <- transform(ff, estimateLogicle(ff, colnames(compensation_matrix)))
+
+channels <- which(colnames(ff) %in% colnames(compensation_matrix))
+
+
+peacoqc_res <- PeacoQC(ff = ff, 
+                       colnames(compensation_matrix), 
+                       output_directory = "Spectral_data/",
+                       name_directory = "PeacoQC_Results",
+                       remove_zeros = T,
+                       time_unit = 10000,
+                       save_fcs = T,
+                       plot = T)
+
+# Is necessary to make flowAI have the correct file ID
+tryout <- flowSet(ff)
+identifier(tryout[[1]]) <- basename(file)
+
+
+flowai_results <-  tryCatch({flow_auto_qc(tryout,
+                               folder_results = "Spectral_data/FlowAI_res",
+                               ChExcludeFS = colnames(ff)[-channels],
+                               ChExcludeFM = colnames(ff)[-channels])},
+                          error = function(e){return(NA)})
+
+results_flowcut <- tryCatch({flowCut(ff,
+                           Channels = colnames(compensation_matrix),
+                           FileID = "Spectral_file",
+                           Verbose = F,
+                           Directory = "Spectral_data/flowCut")},
+                          error = function(e){return(NA)})
+if(!is.na(results_flowcut)){
+    write.FCS(results_flowcut$frame,
+              filename = "Spectral_data/flowCut/Spectral_file.fcs")
+}
+
+dir.create("Spectral_data/flowClean")
+
+# This last step will take a long time. I manually shut it down after two hours.
+results_flowclean <- clean(fF = ff,
+                           vectMarkers = colnames(compensation_matrix),
+                           filePrefixWithDir =
+                               "Spectral_data/flowClean/Spectral_file.fcs",
+                           ext = ".fcs",
+                           diagnostic = T)
+write.FCS(results_flowclean,
+          filename = "Spectral/flowClean/Spectral_data.fcs")
+
+
+
+```
+
+# Make overview plot of spectral data file
+
+```{r}
+    
+# Path to compensation matrix
+compensation_matrix <- read.csv("../../Data_flowRepository/compensation_matrix_spectral_data.csv",
+                                row.names = 1,
+                                check.names = FALSE)
+
+
+file <- "Spectral_file.fcs"
+ff <- read.FCS("../../Data_flowRepository/Spectral_file.fcs", 
+               truncate_max_range = FALSE) 
+
+ff <- compensate(ff, compensation_matrix)
+
+ff <- transform(ff, estimateLogicle(ff, colnames(compensation_matrix)))
+
+set.seed(1)
+
+frame_cells <- ExtractQCCellsMass(file, ff, directory = "Spectral_data")
+frame_cells.melted <- melt(frame_cells,
+                           measure.vars = c("PeacoQC",
+                                            "flowCut",
+                                            "FlowAI",
+                                            "flowClean"))
+sampled_cells <- sample(nrow(ff), 5000)
+
+channel <- 10
+
+frame <- data.frame("idc" = sampled_cells,
+                    "time" = ff@exprs[sampled_cells, "Time"],
+                    "cells" = ff@exprs[sampled_cells,channel] )
+
+
+median_quantile_frame <-  CalculateMedianQuantile(ff, channel)
+subset_timeplot <- sort(sample(seq_len(nrow(ff)), 50000))
+
+h <- graphics::hist(flowCore::exprs(ff)[subset_timeplot, "Time"],
+                    breaks=seq(min(flowCore::exprs(ff)[, "Time"]),
+                               max(flowCore::exprs(ff)[, "Time"]) +
+                                   10000, by=10000),
+                    plot=FALSE)
+
+h$events_1 <- sapply(h$mids, 
+                     FUN = function(x){
+                         which(abs(ff@exprs[,"Time"] - x) == 
+                                   min(abs(ff@exprs[,"Time"]- x)))[1]})
+
+breaks <- sapply(h$breaks, 
+               FUN = function(x){
+                   which(abs(ff@exprs[,"Time"] - x) ==
+                             min(abs(ff@exprs[,"Time"] - x)))[1]})
+
+
+
+blocks_plot <- BuildBackgroundBlocks(h, breaks, file)
+
+scale_plot <- BuildManualScale(file)
+
+idcs <- findInterval(flowCore::exprs(ff)[subset_timeplot, "Time"], 
+                     h$breaks)
+
+p_time <- ggplot() + theme_bw() +
+    blocks_plot + 
+    scale_plot +
+    geom_point(aes(x = h$events_1, y = h$counts), size = 0.2) +
+    geom_line(aes(x = h$events_1, y = h$counts)) +
+    scale_x_continuous(limits = c(0,max(breaks))) +
+    theme(panel.grid=element_blank(),
+          axis.line  = element_line(size = 0.5),
+          axis.line.x = element_blank(),
+          axis.text.x = element_blank(),
+          axis.ticks.y = element_line(size = 0.5),
+          axis.ticks.x = element_blank(),
+          panel.border = element_blank()) +
+    xlab("") + ylab("Nr of cells per 100 seconds") +
+    theme(plot.title=element_text(size=10))
+
+p1 <- ggplot() +
+    blocks_plot +
+    scale_plot +
+    geom_point(data = frame, aes(x = idc, y = cells), size = 0.4) +
+    theme_bw() +
+    theme(axis.title.x = element_blank(),
+          axis.ticks.x = element_blank(),
+          axis.text.x = element_blank(),
+          panel.grid = element_blank(),
+          panel.border = element_blank(),
+          axis.line.y = element_line(size = 0.5)) +
+    labs(y = colnames(ff@exprs)[channel]) + 
+    
+    geom_line(data = median_quantile_frame,
+              aes(x = median_quantile_frame[,1], 
+                  y = median_quantile_frame[,2]),
+              color = "red", size = 1)
+
+p2 <- HeatmapQCMassData(frame_cells.melted)
+
+legend_background <- get_legend(p1)
+legend_p2 <- get_legend(p2)
+legend <- rbind(legend_background, legend_p2)
+legend_plot <- as_ggplot(legend)
+
+plot_without_legend <- ggarrange(p_time + theme(legend.position = "none"), 
+                                 p1 + theme(legend.position = "none"), 
+                                 p2 + theme(legend.position = "none"), 
+                                 ncol = 1, 
+                                 align = "v")
+
+final_plot <- ggarrange(plot_without_legend, legend_plot, 
+                        nrow =1, widths = c(1,0.5))
+
+ggsave(file = paste0("Spectral_data/Figure5_2.png"), 
+       width = 8,
+       height = 6.5
+)
+
+
+
+```
+
+
+

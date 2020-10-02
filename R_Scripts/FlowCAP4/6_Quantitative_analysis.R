@@ -3,6 +3,8 @@ library(tidyverse)
 library(ggplot2)
 library(cowplot)
 library(reshape2)
+library(ggbeeswarm)
+library(ggpubr)
 
 Se_SP <- function(kept, trues, falses){
     sensitivity <- sum(falses[!kept])/(
@@ -220,41 +222,66 @@ p <- ggplot(overview_data_test, aes(x = variable, y = value))+
 
 
 
-ggsave(plot =p_test, "Figure6.png", height = 10, width = 6)
+ggsave(plot =p, "Figure6.png", height = 10, width = 6)
 
 
 # ------------------------------- Statistical analysis ------------------------
 
 
-balanced_accuracy_df <- overview_data_test %>% filter(variable == "Balanced accuracy")
+different_statistics <- c("A. Balanced accuracy", "B. Sensitivity", 
+                          "C. Specificity", "D. Percentage Removed")
 
-balanced_accuracy_df <- overview_data_test %>% filter(variable == "Sensitivity")
+plot_list <- list()
 
-balanced_accuracy_df <- overview_data_test %>% filter(variable == "Specificity")
+statistic <- different_statistics[1]
 
+for (statistic in different_statistics){
+    
+    df <- overview_data_test %>% filter(variable == sub(".\\. ","",statistic))
+    
+    
+    pwt <- pairwise.wilcox.test(df$value, 
+                                df$Algorithm,
+                                p.adjust.method = "BH")
+    
+    m <- formatC(pwt$p.value, format = "e", digits = 2)
+    m[which(m == " NA")] <- ""
+    rownames(m)[5] <- "Random"
+    
+    
+    p <- ggtexttable(m, 
+                     theme = ttheme(base_size = 10,
+                                    rownames.style = 
+                                        colnames_style(face = "bold", size = 10),
+                                    tbody.style = 
+                                        tbody_style(fill = "white", size = 10)))
 
-pwt <- pairwise.wilcox.test(balanced_accuracy_df$value, balanced_accuracy_df$Algorithm,
-                     p.adjust.method = "BH")
-
-m <- round(pwt$p.value, digits=6)
-m[is.na(m)] <- ""
-rownames(m)[5] <- "Random"
-
-p <- ggtexttable(m, 
-                 theme = ttheme(base_size = 10,
-                                rownames.style = colnames_style(face = "bold", size = 10),
-                                tbody.style = tbody_style(fill = "white", size = 10)))
-for(row in 1:5){
-    for(col_value in 1:5){
-        val <- m[row, col_value]
-        if(val != "" & as.numeric(val) < 0.05){
-            p <- table_cell_bg(p, row = row+1, 
-                               column = col_value+1, 
-                               color = "white", 
-                               fill = "#FF000022")
+    
+        
+    for(row in 1:5){
+        for(col_value in 1:5){
+            val <- m[row, col_value]
+            if(val != "" & as.numeric(val) < 0.05){
+                p <- table_cell_bg(p, row = row+1, 
+                                   column = col_value+1, 
+                                   color = "white", 
+                                   fill = "#FF000022")
+            }
         }
     }
+    
+    plot_list[[statistic]] <- p  %>% 
+        tab_add_title(text = statistic, face = "bold")
+    
+    
+    
+    
 }
 
+final_plot <- ggarrange(plotlist = plot_list, nrow = 2, ncol = 2,
+          align = "hv")
 
-p
+ggsave(plot = final_plot, "Supp_figure_2.png", width = 12, height = 6)
+
+
+
