@@ -44,14 +44,12 @@ ff <- transform(ff, estimateLogicle(ff, colnames(compensation_matrix)))
 channels <- which(colnames(ff) %in% colnames(compensation_matrix))
 
 
-peacoqc_res <- PeacoQC(ff = ff, 
+peacoqc_res <- system.time(PeacoQC(ff = ff, 
                        colnames(compensation_matrix), 
                        output_directory = "Spectral_data/",
                        name_directory = "PeacoQC_Results",
-                       remove_zeros = T,
                        time_unit = 10000,
-                       save_fcs = T,
-                       plot = T)
+                       save_fcs = T))
 
 # Is necessary to make flowAI have the correct file ID
 tryout <- flowSet(ff)
