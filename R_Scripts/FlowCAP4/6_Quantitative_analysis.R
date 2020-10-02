@@ -37,7 +37,7 @@ rename[,1] <- sprintf("%03d", rename[,1])
 
 files <- files[sub("_comp_trans","",files)%in%  paste0(rename[,1], ".fcs")]
 
-file <- files[2]
+file <- files[44]
 
 
 for (file in files){

@@ -9,7 +9,7 @@ ExtractQCCells <- function(file, ff, directory){
     if (is(flowai_ff, "flowFrame")){
         flowai_kept <- flowai_ff@exprs[,"remove_from_all"] < 10000
         flowai_ff <- flowai_ff[which(flowai_ff@exprs[,"remove_from_all"] < 10000), ]
-        cells_FlowAI <- ((nrow(ff) - nrow(flowai_ff))/nrow(ff))*100
+        cells_flowAI <- ((nrow(ff) - nrow(flowai_ff))/nrow(ff))*100
         
     } else{ flowai_kept <- rep(FALSE, nrow(ff))
     }
@@ -32,7 +32,7 @@ ExtractQCCells <- function(file, ff, directory){
     frame_cells <- data.frame("idc" = seq_len(nrow(ff)),
                               "PeacoQC" = peacoqc_kept,
                               "flowCut" = flowcut_kept,
-                              "FlowAI" = flowai_kept,
+                              "flowAI" = flowai_kept,
                               "flowClean" = flowclean_ketp)
     
     return(frame_cells)
@@ -85,7 +85,8 @@ HeatmapQC <- function(frame_cells.melted){
               legend.title = element_blank(),
               axis.text.x = element_blank(),
               panel.grid.major = element_blank(),
-              panel.grid.minor = element_blank()) +
+              panel.grid.minor = element_blank(),
+              text = element_text(size = 13)) +
         scale_fill_manual(labels = c("FALSE" = "Removed by algorithm",
                                      "TRUE" = "Kept by algorithm",
                                      "NA" = "Algorithm did not work"),
@@ -115,13 +116,14 @@ HeatmapQCMassData <- function(frame_cells.melted){
               legend.title = element_blank(),
               axis.text.x = element_blank(),
               panel.grid.major = element_blank(),
-              panel.grid.minor = element_blank()) +
+              panel.grid.minor = element_blank(),
+              text = element_text(size = 13)) +
         scale_fill_manual(labels = c("FALSE" = "Removed by algorithm",
                                      "TRUE" = "Kept by algorithm",
                                      "NA" = "Algorithm did not work"),
                           values = c("TRUE" = "#27476E",
                                      "FALSE" = "#E26D5C",
-                                     "NA" = "#DF2935")) 
+                                     "NA" = "grey55")) 
     return(p2)
 }
 
@@ -313,7 +315,7 @@ ExtractQCCellsMass <- function(file, ff, directory){
     if (is(flowai_ff, "flowFrame")){
         flowai_kept <- flowai_ff@exprs[,"remove_from_all"] < 10000
         flowai_ff <- flowai_ff[which(flowai_ff@exprs[,"remove_from_all"] < 10000), ]
-        cells_FlowAI <- ((nrow(ff) - nrow(flowai_ff))/nrow(ff))*100
+        cells_flowAI <- ((nrow(ff) - nrow(flowai_ff))/nrow(ff))*100
         
     } else{ flowai_kept <- rep(NA, nrow(ff))
     }
@@ -349,7 +351,7 @@ ExtractQCCellsMass <- function(file, ff, directory){
     frame_cells <- data.frame("idc" = seq_len(nrow(ff)),
                               "PeacoQC" = peacoqc_kept,
                               "flowCut" = flowcut_kept,
-                              "FlowAI" = flowai_kept,
+                              "flowAI" = flowai_kept,
                               "flowClean" = flowclean_ketp)
     
     return(frame_cells)

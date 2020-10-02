@@ -93,7 +93,7 @@ frame_cells <- ExtractQCCellsMass(file, ff, directory = "Mass_data")
 frame_cells.melted <- melt(frame_cells,
                            measure.vars = c("PeacoQC",
                                             "flowCut",
-                                            "FlowAI",
+                                            "flowAI",
                                             "flowClean"))
 sampled_cells <- sample(nrow(ff), 5000)
 
