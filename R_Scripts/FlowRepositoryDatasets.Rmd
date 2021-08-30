@@ -1,0 +1,340 @@
+---
+title: "FlowRepositoryDatasets"
+output: html_document
+---
+
+# List libraries
+```{r}
+library(PeacoQC)
+library(flowClean)
+library(flowCut)
+library(flowAI)
+library(flowCore)
+library(tidyverse)
+library(reshape2)
+library(ggpubr)
+library(ggplot2)
+library(ggpubr)
+source("R_Scripts/QC_Comparison_helper_function.R")
+
+dir.create("Data_flowRepository/RDS")
+
+```
+datasets
+```{r}
+datasets <- c("FR-FCM-Z2FV","FR-FCM-Z2HL","FR-FCM-Z2HR",
+              "FR-FCM-Z32U","FR-FCM-ZYRN","FR-FCM-ZYRX","FR-FCM-Z2EY",
+              "FR-FCM-Z35Y","FR-FCM-Z2KU",
+              "FR-FCM-Z2NR","FR-FCM-Z2NX","FR-FCM-Z23C",
+              "FR-FCM-Z2QV","FR-FCM-Z2EK","FR-FCM-Z2EM","FR-FCM-Z2EL")
+```
+
+
+
+# Create preprocessig dir and figure dir
+```{r}
+PP_dir <- file.path(dirname(files[1]), "PP")
+dir.create(PP_dir)
+
+Figure_dir <- file.path(dirname(files[1]), "Figure")
+dir.create(Figure_dir)
+
+```
+
+
+# Compensate and Transform the data
+```{r}
+
+file <- files[14]
+
+for (file in files){
+  print(file)
+  
+  ff <- read.FCS(file, truncate_max_range = FALSE)
+  
+  ff_pp <- Preprocessing(ff, remove_margins, comp_matrix, type, remove_zeros)
+  
+  write.FCS(ff_pp, file.path(PP_dir, gsub(".fcs", "_PP.fcs", basename(file))))
+  
+}
+
+
+
+```
+
+
+# Perform Quality control 
+```{r}
+
+dataset <- datasets[10]
+
+for (dataset in datasets){
+  
+  parameters <- ExtractDatasetParameters(dataset)
+  
+  
+  PP_dir <- file.path(dirname(parameters$files[1]), "PP")
+  Figure_dir <- file.path(dirname(parameters$files[1]), "Figure")
+  
+  
+  
+  files <- file.path("Data_flowrepository", dataset, "PP", sub(".fcs", "_PP.fcs",basename(parameters$files)))
+  
+  
+  removed_cells_list <- list()
+  
+  file <- files[1]
+  
+  
+  removed_cells_list <- readRDS(paste0("Data_flowRepository/RDS_samechannels/", dataset, ".RDS"))
+  
+  for (file in files){
+    print(file)
+    ff <- read.FCS(file, truncate_max_range = FALSE)
+    
+    frame_cells <- flowrepo_quality_control(ff, Figure_dir, parameters$remove_zeros)
+
+    removed_cells_list[[file]] <- frame_cells
+    
+    frame_cells <- removed_cells_list[[file]]
+    
+  }
+  
+  
+  
+  saveRDS(removed_cells_list, file = paste0("Data_flowRepository/RDS_samechannels/", dataset, ".RDS"))
+  
+  
+}
+```
+
+# Make figures
+```{r}
+# figure_files <- list.files("Data_flowRepository/RDS_samechannels/", full.names = TRUE)
+
+figure_files <- paste0("Data_flowRepository/RDS_samechannels/",datasets, ".RDS")
+
+names(figure_files) <- c(rep("Flow", 9), rep("Mass", 3), rep("Spectral", 4))
+
+figure_list <- list()
+
+
+file <- figure_files[5]
+for (file in figure_files){
+  
+  print(file)
+  
+  dataset <- sub("Data_flowRepository/RDS_samechannels/(.*).RDS", "\\1", file)
+  
+  files <- ExtractDatasetParameters(dataset)$files
+  files <- paste0("Data_flowrepository/",dataset,"/PP/", sub(".fcs", "_PP.fcs",basename(files)) )
+  
+  
+  results <- readRDS(file)
+  perc_removed_list <- lapply(results, function(x){
+    apply(x[,c(2,3)], 2, function(i){
+      if (all(is.na(i))){
+        return(NA)
+      } else {
+        return(length(which(i == FALSE))/ nrow(x))} })
+  })
+  
+  perc_removed_table <- do.call(rbind, perc_removed_list)
+  
+  perc_removed_table <- as.data.frame(perc_removed_table)
+  
+  perc_removed_table <- perc_removed_table[files,]
+  
+  differences <- (perc_removed_table[,1] - perc_removed_table[,2]) * 100
+ 
+  differences <- ifelse((is.na(differences) == TRUE), "flowAI gave an error",
+                        ifelse(differences < -10, "flowAI removed 10% or more than PeacoQC",
+                       ifelse(differences > 10, "PeacoQC removed 10% or more than flowAI",
+                                     "The removal difference was less than 10%")))
+  
+  perc_removed_table[is.na(perc_removed_table)] <- -0.1
+  
+  
+  perc_removed_table <- cbind(perc_removed_table, differences, 
+                              names = rownames(perc_removed_table))
+  
+  
+  melted_percentage <- melt(perc_removed_table, variable.name = "Algorithm", 
+                            value.name = "PercentageRemoved")
+  melted_percentage[,"differences"] <- factor(melted_percentage[,"differences"],
+                                              levels = c("flowAI removed 10% or more than PeacoQC",
+                                                         "PeacoQC removed 10% or more than flowAI",
+                                                         "flowAI gave an error",
+                                                         "The removal difference was less than 10%"
+                                              ) )
+  melted_percentage[,"PercentageRemoved"] <- melted_percentage[,"PercentageRemoved"] *100
+  
+  p <- ggplot(data = melted_percentage, aes(y = PercentageRemoved, 
+                                            x = Algorithm, group = names)) +
+    geom_point(na.rm = FALSE) 
+  
+  p <- p + geom_line(aes(color = differences), alpha = 0.6)
+  
+  p <- p + theme_minimal() + 
+    ggtitle(sub("Data_flowRepository/RDS_samechannels/(.*).RDS", "\\1", file),
+            subtitle = paste0("(",names(figure_files[figure_files == file]), ", n=",nrow(perc_removed_table), ")")) +
+    theme(plot.title = element_text(hjust = 0.5, size = 11),
+          plot.subtitle = element_text(hjust = 0.5)) +
+    xlab("")
+    
+  
+  if (-0.1 %in% perc_removed_table[,"flowAI"]){
+    
+    y_labs <- ggplot_build(p)$layout$panel_params[[1]]$y$get_labels()
+    y_labs <- y_labs[!is.na(y_labs)]
+    
+    if (any(as.numeric(y_labs)<0)){
+      y_labs[which(as.numeric(y_labs) < 0)] <- "NA"
+    } else{
+      y_labs <- c("NA", y_labs)
+      
+    }
+    
+    y_breaks <- ggplot_build(p)$layout$panel_params[[1]]$y$get_breaks()
+    y_breaks <- y_breaks[!is.na(y_breaks)]
+    
+    if (!any(as.numeric(y_breaks)<0)){
+      y_breaks <- c(min(melted_percentage[,"PercentageRemoved"]), y_breaks)
+    }
+    
+    p <- p + scale_y_continuous(breaks = as.numeric(y_breaks), labels = y_labs)
+    
+    
+  }
+  
+  
+  p <- p + scale_color_manual(name = "",
+                       labels =  c("flowAI removed 10% or more than PeacoQC",
+                                    "PeacoQC removed 10% or more than flowAI",
+                                   "flowAI gave an error",
+                                   "The removal difference was less than 10%"
+                                   ),
+                       values = c("flowAI removed 10% or more than PeacoQC" = "#5B2A83",
+                                  "PeacoQC removed 10% or more than flowAI" = "#1A2944",
+                                  "flowAI gave an error" = "#EC6629",
+                                  "The removal difference was less than 10%"= "#41B7B9"),
+                       drop = FALSE)
+  
+  # print(p)
+  
+  figure_list[[file]] <- p
+  
+  
+}
+
+
+
+plot <- ggarrange(plotlist = figure_list, nrow = 4, ncol = 4, common.legend = TRUE, 
+          legend = "bottom")
+
+plot
+ggsave(plot = plot, filename = "Data_flowRepository/Results_datasets_onlycells_10.eps", device = "eps", width = 12,
+       height = 7)
+
+
+
+```
+
+
+# Make overview figures
+```{r}
+
+plot_list <- list()
+
+plot_list <- readRDS("Data_flowRepository/plots_flow.rds")
+
+dataset <- datasets[7]
+
+
+for (dataset in datasets[10:12]){
+  
+  parameters <- ExtractDatasetParameters(dataset)
+  
+  
+  PP_dir <- file.path(dirname(parameters$files[1]), "PP")
+  Figure_dir <- file.path(dirname(parameters$files[1]), "Figure")
+  
+  
+  
+  files <- file.path("Data_flowrepository", dataset, "PP", sub(".fcs", "_PP.fcs",basename(parameters$files)))
+  
+  file <- files[1]
+  
+  
+  removed_cells_list <- readRDS(paste0("Data_flowRepository/RDS_samechannels/", dataset, ".RDS"))
+  
+  for (file in files){
+    print(file)
+    ff <- read.FCS(file, truncate_max_range = FALSE)
+    
+    frame_cells <- removed_cells_list[[file]]
+    
+    if (length(parameters$plot_channel)>1){
+      plot_channel <- parameters$plot_channel[parameters$plot_channel %in% pData(ff@parameters)[,"desc"]][1]
+      plot_channel <- grep(paste0("^",plot_channel,"$"), pData(ff@parameters)[,"desc"] )
+      
+      
+    } else{
+      plot_channel <- parameters$plot_channel
+    }
+
+      figure <- flowrepo_overview_figure(frame_cells, plot_channel = plot_channel,
+                                       time_unit = parameters$time_unit)
+      
+      
+      figure <- annotate_figure(figure, fig.lab = paste0(dataset, ": file ", 
+                                               grep(file, files), "/ ", 
+                                               length(files),  " (n= ", 
+                                               nrow(ff), " cells)"),
+                                fig.lab.pos = "top.left")
+      
+      plot_list[[file]] <- figure
+    
+  }
+  
+}
+
+
+# figures <- ggarrange(plotlist = plot_list, nrow = 3, ncol = 4)
+
+
+# figures <- ggarrange(plotlist = plot_list, nrow = 10, ncol = 5)
+
+figures <- ggarrange(plotlist = plot_list, nrow = 10, ncol = 5)
+
+
+
+saveRDS(plot_list, file = "Data_flowRepository/plots_mass.rds")
+
+
+# saveRDS(plot_list, file = "Data_flowRepository/plots_flow.rds")
+
+# saveRDS(plot_list, file = "Data_flowRepository/plots_spectral.rds")
+
+ggsave(plot = figures, filename = "Data_flowRepository/Mass_comparison.png", 
+       width = 50, 
+       height = 100,
+       limitsize = FALSE)
+
+
+ggsave(figures, filename = "Data_flowRepository/Flow_comparison.png",
+       width = 50,
+       height = 100,
+       limitsize = FALSE)
+
+# ggsave(figures, filename = "Data_flowRepository/spectral_comparison.png", 
+#        width = 40, 
+#        height = 30,
+#        limitsize = FALSE)
+
+
+```
+
+
+
+
